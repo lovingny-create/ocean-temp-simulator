@@ -1,0 +1,1886 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>해수 연직 수온 분포 탐구 시뮬레이터 (Realistic)</title>
+  <style>
+    /* ===== CSS 변수 ===== */
+    :root {
+      --clr-bg:          #E8ECEF; /* 밝은 나무/랩 데스크 톤 배경 */
+      --clr-header:      #2C3E50;
+      --clr-header-txt:  #ECF0F1;
+      --clr-panel:       #FFFFFF;
+      --clr-border:      #CFD8DC;
+      --clr-border-dark: #78909C;
+      --clr-accent:      #2980B9;
+      --clr-accent-org:  #D35400;
+      --clr-ghost-line:  rgba(41, 128, 185, 0.5);
+      --clr-dz-idle:     rgba(207,216,220,0.3);
+      --clr-dz-active:   rgba(41, 128, 185, 0.15);
+      --clr-dz-border:   #2980B9;
+      --clr-text:        #2C3E50;
+      --clr-text-sub:    #546E7A;
+      --clr-success:     #27AE60;
+      --font:            'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      --radius:          12px;
+      --radius-sm:       8px;
+      /* 스키오모피즘 그림자 효과 */
+      --shadow-panel:    0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+      --shadow-inset:    inset 0 2px 4px rgba(255,255,255,0.7), inset 0 -2px 4px rgba(0,0,0,0.1);
+      --shadow-drop:     0 4px 8px rgba(0,0,0,0.2);
+      --header-h:        64px;
+      --gap:             16px;
+    }
+
+    /* ===== 리셋 ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: radial-gradient(circle at 50% 0%, #F4F6F7 0%, var(--clr-bg) 100%);
+      color: var(--clr-text);
+      font-size: 14px;
+      line-height: 1.5;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* ===== 헤더 ===== */
+    #app-header {
+      height: var(--header-h);
+      background: linear-gradient(to bottom, #34495E, #2C3E50);
+      color: var(--clr-header-txt);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      border-bottom: 1px solid #1A252F;
+    }
+    #app-header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+    #stage-indicator {
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.3);
+      padding: 5px 14px;
+      border-radius: 20px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), 0 1px 1px rgba(255,255,255,0.1);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    /* ===== 메인 그리드 ===== */
+    #app-main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+      padding: var(--gap);
+      height: calc(100vh - var(--header-h));
+      overflow: hidden;
+    }
+
+    /* ===== 좌측: 실험실 뷰 ===== */
+    #lab-view {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--clr-panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-panel);
+      position: relative;
+    }
+    #lab-view::before { /* 실험대 나무 질감 느낌 */
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(90deg, rgba(0,0,0,0.01) 0px, rgba(0,0,0,0.01) 2px, transparent 2px, transparent 10px);
+      pointer-events: none;
+      border-radius: var(--radius);
+    }
+
+    /* ---- 1단계: 준비 ---- */
+    #stage-setup {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 18px;
+      gap: 14px;
+      z-index: 1;
+    }
+
+    #setup-title {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--clr-header);
+      border-bottom: 2px solid #BDC3C7;
+      padding-bottom: 6px;
+    }
+    #setup-subtitle {
+      font-size: 0.82rem;
+      color: var(--clr-text-sub);
+      margin-top: -6px;
+    }
+
+    /* 보관함 */
+    #storage-box {
+      background: linear-gradient(135deg, #F8F9FA, #E9ECEF);
+      border: 1px solid #CED4DA;
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      min-height: 100px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.05);
+    }
+    #storage-label {
+      width: 100%;
+      font-size: 0.75rem;
+      color: #495057;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    /* 드래그 아이템 */
+    .drag-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: grab;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(to bottom, #FFFFFF, #F1F3F5);
+      border: 1px solid #DEE2E6;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05);
+      transition: box-shadow 0.2s, transform 0.2s;
+      user-select: none;
+      touch-action: none;
+    }
+    .drag-item:hover {
+      box-shadow: 0 6px 12px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08);
+      transform: translateY(-3px);
+    }
+    .drag-item:active { cursor: grabbing; }
+    .drag-item .item-label {
+      font-size: 0.7rem;
+      color: var(--clr-text-sub);
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    /* 실험대 */
+    #experiment-table {
+      flex: 1;
+      position: relative;
+      background: #F8F9FA;
+      border: 1px solid #DEE2E6;
+      border-radius: var(--radius);
+      padding: 14px;
+      overflow: hidden;
+      box-shadow: inset 0 4px 12px rgba(0,0,0,0.04);
+    }
+    #table-label {
+      font-size: 0.75rem;
+      color: var(--clr-text-sub);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+
+    /* 드롭 영역 레이아웃 */
+    #dz-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 12px;
+    }
+    #dz-row-top {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    #dz-row-bottom {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* 드롭존 공통 */
+    .drop-zone {
+      border: 2px dashed #ADB5BD;
+      border-radius: var(--radius-sm);
+      background: rgba(248, 249, 250, 0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px;
+      transition: all 0.2s;
+      min-height: 80px;
+      position: relative;
+    }
+    .drop-zone .dz-label {
+      font-size: 0.7rem;
+      color: #6C757D;
+      font-weight: 700;
+      position: absolute;
+      bottom: 6px;
+      left: 0; right: 0;
+      text-align: center;
+    }
+    .drop-zone.dz-active {
+      border-color: var(--clr-accent);
+      border-style: solid;
+      background: var(--clr-dz-active);
+      box-shadow: inset 0 0 0 2px rgba(41, 128, 185, 0.2);
+    }
+    .drop-zone.dz-filled {
+      border-style: solid;
+      border-color: var(--clr-success);
+      background: rgba(39, 174, 96, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(39, 174, 96, 0.3);
+    }
+    .drop-zone.dz-filled .dz-ghost,
+    .drop-zone.dz-filled .dz-label { display: none; }
+
+    /* 유령 실루엣 */
+    .dz-ghost {
+      opacity: 0.25;
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
+    }
+
+    /* 크기별 드롭존 */
+    #dz-aquarium { width: 130px; min-height: 95px; }
+    #dz-lamp     { width: 85px; }
+    #dz-fan      { width: 85px; }
+    .dz-thermo   { width: 56px; min-height: 80px; }
+
+    /* 실험 시작 버튼 */
+    #btn-start-experiment {
+      margin-top: 10px;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: var(--radius);
+      background: linear-gradient(to bottom, #3498DB, #2980B9);
+      color: white;
+      font-size: 1.05rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(41,128,185,0.3), inset 0 1px 1px rgba(255,255,255,0.3);
+      transition: all 0.2s;
+      letter-spacing: 0.03em;
+    }
+    #btn-start-experiment:disabled {
+      background: #BDC3C7;
+      color: #ECF0F1;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    #btn-start-experiment:not(:disabled):hover {
+      background: linear-gradient(to bottom, #2980B9, #2471A3);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 10px rgba(41,128,185,0.4), inset 0 1px 1px rgba(255,255,255,0.3);
+    }
+    #btn-start-experiment:not(:disabled):active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 4px rgba(41,128,185,0.4), inset 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    /* ---- 2단계: 실험 ---- */
+    #stage-experiment {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    /* SVG 수조 영역 */
+    #aquarium-svg {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      /* background: linear-gradient(to bottom, #E8ECEF, #D5DDE4); */
+    }
+
+    /* 조작 패널 (물리적 제어반 느낌) */
+    #controls-panel {
+      border-top: 2px solid #BDC3C7;
+      padding: 14px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: linear-gradient(to bottom, #F4F6F7, #EAECEE);
+      box-shadow: inset 0 2px 4px rgba(255,255,255,0.8);
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .ctrl-label {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: var(--clr-header);
+      min-width: 80px;
+      text-shadow: 0 1px 1px rgba(255,255,255,0.8);
+    }
+
+    /* 토글/버튼 그룹 */
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      background: #D5DDE4;
+      padding: 4px;
+      border-radius: 24px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .ctrl-btn {
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 0.85rem;
+      color: #546E7A;
+      font-weight: 600;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .ctrl-btn:hover:not(.active) {
+      color: var(--clr-header);
+      background: rgba(255,255,255,0.4);
+    }
+    .ctrl-btn.active {
+      background: #FFFFFF;
+      border-color: #BDC3C7;
+      color: var(--clr-accent);
+      font-weight: 800;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* 시간 컨트롤 */
+    #ctrl-time {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+      padding-top: 12px;
+      border-top: 1px dashed #BDC3C7;
+    }
+    #btn-play-pause {
+      padding: 8px 20px;
+      border-radius: 24px;
+      border: none;
+      background: linear-gradient(to bottom, #E67E22, #D35400);
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 3px 6px rgba(211,84,0,0.3), inset 0 1px 1px rgba(255,255,255,0.3);
+      transition: all 0.15s;
+    }
+    #btn-play-pause:hover { 
+      background: linear-gradient(to bottom, #D35400, #BA4A00);
+      transform: translateY(-1px); 
+      box-shadow: 0 4px 8px rgba(211,84,0,0.4);
+    }
+    #btn-play-pause:active {
+      transform: translateY(1px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+    }
+    #btn-play-pause:disabled { 
+      background: #BDC3C7; 
+      color: #ECF0F1;
+      cursor: not-allowed; 
+      box-shadow: none; 
+    }
+
+    #btn-reset {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid #95A5A6;
+      background: linear-gradient(to bottom, #FFFFFF, #F1F3F5);
+      color: #455A64;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: all 0.2s;
+    }
+    #btn-reset:hover { 
+      border-color: #E74C3C; 
+      color: #E74C3C; 
+      box-shadow: 0 2px 6px rgba(231,76,60,0.2);
+    }
+
+    #time-display {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #2C3E50;
+      font-variant-numeric: tabular-nums;
+      background: #FFFFFF;
+      border: 2px solid #BDC3C7;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      min-width: 110px;
+      text-align: center;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    /* 완료 배너 */
+    #complete-banner {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #27AE60, #2ECC71);
+      color: white;
+      padding: 12px 28px;
+      border-radius: 30px;
+      font-size: 1rem;
+      font-weight: 800;
+      z-index: 100;
+      box-shadow: 0 6px 16px rgba(39,174,96,0.3);
+      white-space: nowrap;
+      pointer-events: none;
+      border: 1px solid #229954;
+    }
+
+    /* ===== 우측: 데이터 센터 ===== */
+    #data-center {
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+      overflow: hidden;
+    }
+
+    /* 그래프 패널 */
+    #graph-panel {
+      background: var(--clr-panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-panel);
+      display: flex;
+      flex-direction: column;
+      flex: 0 0 52%;
+      overflow: hidden;
+      border: 1px solid #E0E0E0;
+    }
+    #graph-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px 8px;
+      background: linear-gradient(to right, #F8F9FA, #FFFFFF);
+      border-bottom: 2px solid #EEEEEE;
+      flex-shrink: 0;
+    }
+    #graph-header h2 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--clr-header);
+    }
+    #chart-wrapper {
+      flex: 1;
+      min-height: 0;
+      padding: 10px 16px 6px;
+      position: relative;
+    }
+    #temp-chart { display: block; }
+
+    #graph-legend {
+      display: flex;
+      gap: 18px;
+      padding: 6px 18px 12px;
+      flex-shrink: 0;
+      background: #FAFAFA;
+      border-top: 1px solid #F0F0F0;
+    }
+    .legend-item {
+      font-size: 0.78rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #616161;
+      font-weight: 600;
+    }
+    .legend-item::before {
+      content: '';
+      display: inline-block;
+      width: 28px;
+      height: 4px;
+      border-radius: 2px;
+    }
+    .legend-item.ghost::before {
+      background: transparent;
+      border-top: 2.5px dashed var(--clr-accent);
+      height: 0;
+      opacity: 0.6;
+    }
+    .legend-item.current::before {
+      background: var(--clr-accent-org);
+      height: 4px;
+    }
+
+    /* 내보내기 버튼 */
+    .export-btn {
+      font-size: 0.78rem;
+      padding: 5px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid #B0BEC5;
+      background: linear-gradient(to bottom, #FFFFFF, #ECEFF1);
+      color: #455A64;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      transition: all 0.2s;
+    }
+    .export-btn:hover {
+      border-color: var(--clr-accent);
+      color: var(--clr-accent);
+      background: #F4F8FA;
+    }
+
+    /* 표 패널 */
+    #table-panel {
+      background: var(--clr-panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-panel);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #E0E0E0;
+    }
+    #table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      background: linear-gradient(to right, #F8F9FA, #FFFFFF);
+      border-bottom: 2px solid #EEEEEE;
+      flex-shrink: 0;
+    }
+    .tab-group {
+      display: flex;
+      gap: 6px;
+    }
+    .tab-btn {
+      padding: 6px 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid #B0BEC5;
+      background: #F5F7F8;
+      color: #607D8B;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover:not(.active) {
+      background: #ECEFF1;
+      color: #455A64;
+    }
+    .tab-btn.active {
+      background: var(--clr-accent);
+      border-color: var(--clr-accent);
+      color: white;
+      font-weight: 800;
+      box-shadow: 0 2px 4px rgba(41, 128, 185, 0.3);
+    }
+
+    /* 가로 스크롤을 위한 테이블 래퍼 */
+    #table-scroll {
+      flex: 1;
+      overflow: auto; /* 가로, 세로 스크롤 허용 */
+      padding: 0;
+      background: #FFFFFF;
+    }
+
+    /* 데이터 표 (행/열 전환형) */
+    .data-table {
+      width: max-content; /* 내용에 맞춰 너비 확장 */
+      min-width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.82rem;
+    }
+    .data-table th, .data-table td {
+      padding: 8px 12px;
+      text-align: center;
+      border-right: 1px solid #EEEEEE;
+      border-bottom: 1px solid #EEEEEE;
+      white-space: nowrap;
+    }
+    .data-table th:last-child, .data-table td:last-child {
+      border-right: none;
+    }
+    /* 상단 헤더 (시간) 고정 */
+    .data-table thead th {
+      background: #F8F9FA;
+      color: var(--clr-header);
+      font-weight: 800;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      box-shadow: 0 2px 2px rgba(0,0,0,0.05);
+      border-bottom: 2px solid #E0E0E0;
+    }
+    /* 좌측 헤더 (수심) 고정 */
+    .data-table td.depth-cell {
+      background: #F8F9FA;
+      color: #455A64;
+      font-weight: 800;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      box-shadow: 2px 0 2px rgba(0,0,0,0.03);
+      border-right: 2px solid #E0E0E0;
+    }
+    /* 교차점 (깊이/시간) 고정 */
+    .data-table thead th:first-child {
+      z-index: 3;
+      left: 0;
+      border-right: 2px solid #E0E0E0;
+      background: #EDF1F2;
+    }
+    
+    .data-table td {
+      font-variant-numeric: tabular-nums;
+      color: #212121;
+      font-weight: 500;
+    }
+
+    /* ===== 하단: Q&A ===== */
+    #qa-section {
+      background: var(--clr-panel);
+      border-top: 1px solid #D5DDE4;
+      padding: 24px;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.03);
+    }
+    #qa-section h2 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--clr-header);
+      margin-bottom: 16px;
+      border-bottom: 3px solid var(--clr-header);
+      padding-bottom: 8px;
+      display: inline-block;
+    }
+
+    #qa-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .qa-item { display: flex; flex-direction: column; gap: 8px; }
+    .q-text {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #34495E;
+      line-height: 1.6;
+    }
+    .q-text .q-tag {
+      display: inline-block;
+      background: var(--clr-accent);
+      color: white;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-right: 6px;
+      vertical-align: middle;
+      font-weight: 800;
+    }
+    .qa-item textarea {
+      resize: vertical;
+      border: 1px solid #B0BEC5;
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-family: var(--font);
+      font-size: 0.85rem;
+      color: #263238;
+      background: #FAFBFC;
+      min-height: 80px;
+      transition: all 0.2s;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .qa-item textarea:focus {
+      outline: none;
+      border-color: var(--clr-accent);
+      background: #FFFFFF;
+      box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.15), inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+
+    #btn-copy-answers {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: var(--radius);
+      background: linear-gradient(to bottom, #34495E, #2C3E50);
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+      transition: all 0.2s;
+      letter-spacing: 0.02em;
+    }
+    #btn-copy-answers:hover { 
+      background: linear-gradient(to bottom, #2C3E50, #1A252F);
+      transform: translateY(-1px); 
+      box-shadow: 0 6px 10px rgba(0,0,0,0.25);
+    }
+
+    /* ===== 단계 전환 ===== */
+    body[data-stage="setup"]      #stage-experiment { display: none; }
+    body[data-stage="experiment"] #stage-setup      { display: none; }
+
+    /* ===== 애니메이션 ===== */
+    @keyframes fan-spin {
+      to { transform: rotate(360deg); }
+    }
+    #svg-fan-blades.fan-slow {
+      animation: fan-spin 0.5s linear infinite;
+      transform-origin: center; transform-box: fill-box;
+    }
+    #svg-fan-blades.fan-fast {
+      animation: fan-spin 0.15s linear infinite;
+      transform-origin: center; transform-box: fill-box;
+    }
+
+    @keyframes glow-pulse {
+      0%, 100% { opacity: var(--glow-opacity, 0.7); }
+      50%       { opacity: calc(var(--glow-opacity, 0.7) * 1.3); }
+    }
+    #svg-lamp-glow.lamp-glow-active {
+      animation: glow-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes wave-drift {
+      0%   { transform: translateX(0px); }
+      100% { transform: translateX(-35px); }
+    }
+    #svg-ripple.wave-active .wave-path {
+      animation: wave-drift 0.8s ease-in-out infinite alternate;
+    }
+    #svg-ripple.wave-fast .wave-path {
+      animation: wave-drift 0.3s ease-in-out infinite alternate;
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .stage-enter {
+      animation: fade-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    @keyframes col-flash {
+      0%   { background: #FFF9C4; }
+      100% { background: transparent; }
+    }
+    .col-new {
+      animation: col-flash 1.5s ease-out forwards;
+    }
+
+    @keyframes dz-pulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(41, 128, 185, 0.4); }
+      50%       { box-shadow: 0 0 0 6px rgba(41, 128, 185, 0.1); }
+    }
+    .drop-zone.dz-highlight {
+      animation: dz-pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes banner-in {
+      from { opacity: 0; transform: translate(-50%, -20px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+    @keyframes banner-out {
+      from { opacity: 1; transform: translate(-50%, 0); }
+      to   { opacity: 0; transform: translate(-50%, -10px); }
+    }
+    #complete-banner {
+      animation: banner-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    #complete-banner.fade-out {
+      animation: banner-out 0.4s ease-in forwards;
+    }
+
+    .drag-item.dragging-source { opacity: 0.2; }
+    .drag-clone {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.95;
+      transform: scale(1.1);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+      border-radius: var(--radius-sm);
+      background: linear-gradient(to bottom, #FFFFFF, #F1F3F5);
+      border: 2px solid var(--clr-accent);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ===== 스크롤바 ===== */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #F1F3F5; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #B0BEC5; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #90A4AE; }
+
+    /* ===== 반응형 ===== */
+    @media (max-width: 900px) {
+      #app-main { grid-template-columns: 1fr; height: auto; overflow: visible; }
+      #lab-view, #data-center { height: auto; overflow: visible; }
+      #graph-panel { flex: none; min-height: 400px; }
+      #chart-wrapper { height: 300px; }
+      #table-panel { flex: none; }
+      #table-scroll { max-height: 250px; }
+      #qa-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body data-stage="setup">
+
+<!-- ===== 헤더 ===== -->
+<header id="app-header">
+  <h1>🌊 해수 연직 수온 분포 탐구 시뮬레이터 <span style="font-size:0.8em; color:#BDC3C7; font-weight:500;">(사실적 버전)</span></h1>
+  <span id="stage-indicator">1단계: 실험 준비</span>
+</header>
+
+<!-- ===== 메인 그리드 ===== -->
+<main id="app-main">
+
+  <!-- ─────────────────── 좌측: 실험실 뷰 ─────────────────── -->
+  <section id="lab-view">
+
+    <!-- ====== 1단계: 준비물 배치 ====== -->
+    <div id="stage-setup">
+      <div id="setup-title">1단계: 실험 준비물 배치</div>
+      <p id="setup-subtitle">아래 9개의 준비물을 모두 실험대 지정 위치로 드래그하여 배치하세요.</p>
+
+      <!-- 보관함 -->
+      <div id="storage-box">
+        <div id="storage-label">📦 보관함 (Drag & Drop)</div>
+
+        <div class="drag-item" data-type="aquarium" data-id="aquarium" draggable="false">
+          <svg width="56" height="42" viewBox="0 0 56 42">
+            <!-- 유리 수조 아이콘 스키오모피즘 -->
+            <rect x="2" y="2" width="52" height="38" rx="4" fill="#E1F5FE" fill-opacity="0.6" stroke="#0288D1" stroke-width="2.5"/>
+            <rect x="4" y="4" width="48" height="8" rx="2" fill="white" fill-opacity="0.8"/>
+            <path d="M4 20 Q 28 16 52 20" fill="none" stroke="white" stroke-width="1.5" opacity="0.7"/>
+          </svg>
+          <span class="item-label">유리 수조</span>
+        </div>
+
+        <div class="drag-item" data-type="lamp" data-id="lamp" draggable="false">
+          <svg width="38" height="46" viewBox="0 0 38 46">
+            <!-- 램프 스키오모피즘 -->
+            <line x1="19" y1="2" x2="19" y2="16" stroke="#546E7A" stroke-width="3"/>
+            <path d="M 6 30 Q 19 14 32 30" fill="#CFD8DC" stroke="#90A4AE" stroke-width="1.5"/>
+            <ellipse cx="19" cy="30" rx="13" ry="6" fill="#FFF59D"/>
+            <circle cx="19" cy="28" r="5" fill="#FFB300"/>
+          </svg>
+          <span class="item-label">백열전등</span>
+        </div>
+
+        <div class="drag-item" data-type="fan" data-id="fan" draggable="false">
+          <svg width="38" height="46" viewBox="0 0 38 46">
+            <!-- 선풍기 스키오모피즘 -->
+            <rect x="16" y="24" width="6" height="20" rx="2" fill="#B0BEC5"/>
+            <rect x="10" y="40" width="18" height="4" rx="2" fill="#78909C"/>
+            <circle cx="19" cy="20" r="14" fill="#ECEFF1" stroke="#90A4AE" stroke-width="2.5"/>
+            <path d="M19 20 L 12 12 M19 20 L 26 12 M19 20 L 19 30" stroke="#78909C" stroke-width="2"/>
+            <circle cx="19" cy="20" r="4" fill="#455A64"/>
+          </svg>
+          <span class="item-label">미니 선풍기</span>
+        </div>
+
+        <!-- 온도계 6개 (0cm ~ 9cm) -->
+        <div class="drag-item" data-type="thermometer" data-id="thermo-0" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">0cm(표면)</span>
+        </div>
+        <div class="drag-item" data-type="thermometer" data-id="thermo-1" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">1cm</span>
+        </div>
+        <div class="drag-item" data-type="thermometer" data-id="thermo-2" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">3cm</span>
+        </div>
+        <div class="drag-item" data-type="thermometer" data-id="thermo-3" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">5cm</span>
+        </div>
+        <div class="drag-item" data-type="thermometer" data-id="thermo-4" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">7cm</span>
+        </div>
+        <div class="drag-item" data-type="thermometer" data-id="thermo-5" draggable="false">
+          <svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="#FFCDD2" stroke="#D32F2F" stroke-width="1.5"/><rect x="6.5" y="6" width="3" height="22" rx="1.5" fill="#E53935"/><circle cx="8" cy="40" r="5.5" fill="#D32F2F" stroke="#B71C1C" stroke-width="1.5"/></svg>
+          <span class="item-label">9cm</span>
+        </div>
+      </div><!-- /storage-box -->
+
+      <!-- 실험대 드롭존 -->
+      <div id="experiment-table">
+        <div id="table-label">🧪 실험대 레이아웃 (총 9개 배치)</div>
+        <div id="dz-layout">
+
+          <!-- 상단 행 -->
+          <div id="dz-row-top">
+            <div class="drop-zone" id="dz-lamp" data-accepts="lamp">
+              <div class="dz-ghost"><svg width="38" height="46" viewBox="0 0 38 46"><path d="M6 30 Q19 14 32 30" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="4,2"/><ellipse cx="19" cy="30" rx="13" ry="6" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">전등</span>
+            </div>
+            <div class="drop-zone" id="dz-aquarium" data-accepts="aquarium">
+              <div class="dz-ghost"><svg width="80" height="52" viewBox="0 0 80 52"><rect x="2" y="2" width="76" height="48" rx="4" fill="none" stroke="#90A4AE" stroke-width="2.5" stroke-dasharray="5,3"/></svg></div>
+              <span class="dz-label">유리 수조</span>
+            </div>
+            <div class="drop-zone" id="dz-fan" data-accepts="fan">
+              <div class="dz-ghost"><svg width="38" height="46" viewBox="0 0 38 46"><circle cx="19" cy="20" r="14" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="4,2"/><rect x="16" y="34" width="6" height="10" fill="none" stroke="#90A4AE" stroke-dasharray="2,2"/></svg></div>
+              <span class="dz-label">선풍기</span>
+            </div>
+          </div>
+
+          <!-- 하단 행 (온도계 6개) -->
+          <div id="dz-row-bottom">
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="0">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">0cm</span>
+            </div>
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="1">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">1cm</span>
+            </div>
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="2">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">3cm</span>
+            </div>
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="3">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">5cm</span>
+            </div>
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="4">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">7cm</span>
+            </div>
+            <div class="drop-zone dz-thermo" data-accepts="thermometer" data-slot="5">
+              <div class="dz-ghost"><svg width="16" height="46" viewBox="0 0 16 46"><rect x="5" y="2" width="6" height="32" rx="3" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/><circle cx="8" cy="40" r="5" fill="none" stroke="#90A4AE" stroke-width="2" stroke-dasharray="3,2"/></svg></div>
+              <span class="dz-label">9cm</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <button id="btn-start-experiment" disabled>▶ 장치 전원 켜기 (실험 시작)</button>
+
+    </div>
+
+    <!-- ====== 2단계: 실험 진행 ====== -->
+    <div id="stage-experiment" style="position:relative;">
+      <div id="complete-banner" style="display:none;"></div>
+
+      <!-- ── SVG 수조 장면 (스키오모피즘) ── -->
+      <svg id="aquarium-svg" viewBox="0 0 480 400" role="img">
+        <defs>
+          <radialGradient id="glow-grad" cx="50%" cy="20%" r="70%">
+            <stop offset="0%" stop-color="#FFF59D" stop-opacity="0.9"/>
+            <stop offset="30%" stop-color="#FFF59D" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#FFF59D" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#81D4FA" stop-opacity="0.4"/>
+            <stop offset="100%" stop-color="#0277BD" stop-opacity="0.6"/>
+          </linearGradient>
+          <linearGradient id="glass-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+            <stop offset="5%" stop-color="#FFFFFF" stop-opacity="0.1"/>
+            <stop offset="95%" stop-color="#FFFFFF" stop-opacity="0.1"/>
+            <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.5"/>
+          </linearGradient>
+          <linearGradient id="metal-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#B0BEC5"/>
+            <stop offset="30%" stop-color="#ECEFF1"/>
+            <stop offset="70%" stop-color="#90A4AE"/>
+            <stop offset="100%" stop-color="#546E7A"/>
+          </linearGradient>
+        </defs>
+
+        <!-- 1. [BG]: 과학실 배경 (Body의 radial gradient가 처리하고 있으므로 SVG 내부는 기둥부터 시작) -->
+
+        <!-- 2. [실험대 프레임]: 메탈 스탠드 세로 기둥 및 가로대 -->
+        <rect x="50" y="20" width="12" height="380" fill="url(#metal-grad)" stroke="#455A64" stroke-width="1"/>
+        <rect x="418" y="20" width="12" height="380" fill="url(#metal-grad)" stroke="#455A64" stroke-width="1"/>
+        <rect x="40" y="70" width="400" height="10" fill="url(#metal-grad)" stroke="#455A64" stroke-width="1" filter="drop-shadow(0 4px 4px rgba(0,0,0,0.3))"/>
+
+        <!-- 3. [열원 장치]: 백열전등 (가로대 중앙 고정) -->
+        <g id="svg-lamp" transform="translate(240,0)">
+          <rect x="-4" y="0" width="8" height="35" fill="#424242"/>
+          <rect x="-18" y="35" width="36" height="15" rx="3" fill="#212121"/>
+          <path d="M-30 80 Q0 30 30 80 Z" fill="rgba(236,240,241,0.9)" stroke="#BDC3C7" stroke-width="2"/>
+          <ellipse cx="0" cy="80" rx="30" ry="8" fill="rgba(255,255,255,0.5)" stroke="#BDC3C7" stroke-width="1"/>
+          <circle cx="0" cy="70" r="16" fill="#FFF9C4" stroke="#FBC02D" stroke-width="2"/>
+          <path d="M-6 66 L0 74 L6 66" fill="none" stroke="#F57F17" stroke-width="2"/>
+        </g>
+        <path id="svg-lamp-glow" d="M210 80 L90 380 L390 380 L270 80 Z" fill="url(#glow-grad)" opacity="0" style="mix-blend-mode: overlay;"/>
+
+        <!-- 4. [유리 수조 뒷면] -->
+        <g id="svg-aquarium">
+          <!-- 뒷벽 -->
+          <rect x="80" y="120" width="320" height="260" fill="url(#glass-grad)" rx="5"/>
+        </g>
+
+        <!-- 5. [액체 레이어 - 소금물] -->
+        <g id="svg-water-layer">
+          <!-- 물 (수조 내부에 맞게 정확히 바운딩) -->
+          <rect id="svg-tank" x="82" y="140" width="316" height="238" fill="url(#water-grad)" rx="2"/>
+          <!-- 수면 가열 효과 레이어 -->
+          <rect id="svg-surface-heat" x="82" y="140" width="316" height="40" fill="#FFEE58" opacity="0" rx="2" style="mix-blend-mode: screen;"/>
+          <!-- 수면 물결 애니메이션 -->
+          <g id="svg-ripple" opacity="0">
+            <path class="wave-path" d="M82,148 C120,135 160,160 200,148 C240,135 280,160 320,148 C360,135 380,145 400,148" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+        </g>
+
+        <!-- 6. [측면 장치]: 미니 선풍기 (우측 스탠드 기둥에 고정되며 수면 높이에 정렬) -->
+        <g id="svg-fan" transform="translate(440,140)">
+          <!-- 가로 연결 지지대 및 클램프 -->
+          <line x1="0" y1="0" x2="-22" y2="0" stroke="#78909C" stroke-width="4"/>
+          <rect x="-22" y="-10" width="12" height="20" rx="2" fill="#455A64"/>
+          <!-- 모터 및 망 -->
+          <circle cx="0" cy="0" r="28" fill="#ECEFF1" stroke="#90A4AE" stroke-width="3" filter="drop-shadow(0 4px 4px rgba(0,0,0,0.2))"/>
+          <g id="svg-fan-blades">
+            <path d="M0 0 C -15 -20, 15 -20, 0 0" fill="#B0BEC5"/>
+            <path d="M0 0 C 20 15, 20 -15, 0 0" fill="#B0BEC5" transform="rotate(120)"/>
+            <path d="M0 0 C -20 15, -20 -15, 0 0" fill="#B0BEC5" transform="rotate(240)"/>
+          </g>
+          <circle cx="0" cy="0" r="8" fill="#546E7A"/>
+          <circle cx="0" cy="0" r="16" fill="none" stroke="#CFD8DC" stroke-width="1.5"/>
+          <circle cx="0" cy="0" r="24" fill="none" stroke="#CFD8DC" stroke-width="1.5"/>
+          <line x1="-28" y1="0" x2="28" y2="0" stroke="#CFD8DC" stroke-width="1.5"/>
+          <line x1="0" y1="-28" x2="0" y2="28" stroke="#CFD8DC" stroke-width="1.5"/>
+        </g>
+
+        <!-- 7. [측정 장치]: 아날로그 유리 온도계 6개 본체 (가로바 Y=70에서 수직으로 매달림) -->
+        <!-- 0cm -->
+        <g class="thermo" transform="translate(105, 140)">
+          <line x1="0" y1="-55" x2="0" y2="-70" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-0" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-0" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+        <!-- 1cm -->
+        <g class="thermo" transform="translate(155, 163.8)">
+          <line x1="0" y1="-55" x2="0" y2="-93.8" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-1" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-1" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+        <!-- 3cm -->
+        <g class="thermo" transform="translate(205, 211.4)">
+          <line x1="0" y1="-55" x2="0" y2="-141.4" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-2" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-2" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+        <!-- 5cm -->
+        <g class="thermo" transform="translate(265, 259)">
+          <line x1="0" y1="-55" x2="0" y2="-189" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-3" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-3" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+        <!-- 7cm -->
+        <g class="thermo" transform="translate(325, 306.6)">
+          <line x1="0" y1="-55" x2="0" y2="-236.6" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-4" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-4" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+        <!-- 9cm -->
+        <g class="thermo" transform="translate(375, 354.2)">
+          <line x1="0" y1="-55" x2="0" y2="-284.2" stroke="#B0BEC5" stroke-width="1.5" stroke-dasharray="2,2"/>
+          <rect x="-4" y="-55" width="8" height="60" rx="4" fill="url(#glass-grad)" stroke="#90A4AE" stroke-width="1.5" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.3))"/>
+          <rect id="thermo-fill-5" x="-1.5" y="-30" width="3" height="30" fill="#E53935"/>
+          <circle id="thermo-bulb-5" cx="0" cy="0" r="6" fill="#E53935" stroke="#C62828" stroke-width="1.5"/>
+        </g>
+
+        <!-- 8. [유리 수조 앞면 및 눈금자] -->
+        <g id="svg-aquarium-front">
+          <!-- 앞벽 (두께감) -->
+          <rect x="80" y="120" width="320" height="260" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="4" rx="5" filter="drop-shadow(0 10px 15px rgba(0,0,0,0.2))"/>
+          <rect x="78" y="118" width="324" height="264" fill="none" stroke="#B0BEC5" stroke-width="1" rx="6"/>
+          
+          <!-- 수심 눈금자 (수조 좌측 투명 자) -->
+          <g transform="translate(60, 140)">
+            <rect x="-10" y="-10" width="25" height="260" fill="rgba(255,255,255,0.8)" stroke="#CFD8DC" rx="2"/>
+            <g fill="#37474F" font-size="11" font-weight="800" text-anchor="end" font-family="sans-serif">
+              <line x1="15" y1="0" x2="5" y2="0" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="4">0</text>
+              <line x1="15" y1="23.8" x2="5" y2="23.8" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="27.8">1</text>
+              <line x1="15" y1="71.4" x2="5" y2="71.4" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="75.4">3</text>
+              <line x1="15" y1="119" x2="5" y2="119" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="123">5</text>
+              <line x1="15" y1="166.6" x2="5" y2="166.6" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="170.6">7</text>
+              <line x1="15" y1="214.2" x2="5" y2="214.2" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="218.2">9</text>
+              <line x1="15" y1="238" x2="5" y2="238" stroke="#37474F" stroke-width="2"/>
+              <text x="2" y="242">10</text>
+            </g>
+          </g>
+        </g>
+
+        <!-- 9. [최상위 - UI]: 온도계 값 표시 라벨들 (앞유리 위에 깨끗하게 표시) -->
+        <!-- 0cm 라벨 -->
+        <g transform="translate(105, 140)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-0" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">0cm</text>
+        </g>
+        <!-- 1cm 라벨 -->
+        <g transform="translate(155, 163.8)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-1" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">1cm</text>
+        </g>
+        <!-- 3cm 라벨 -->
+        <g transform="translate(205, 211.4)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-2" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">3cm</text>
+        </g>
+        <!-- 5cm 라벨 -->
+        <g transform="translate(265, 259)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-3" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">5cm</text>
+        </g>
+        <!-- 7cm 라벨 -->
+        <g transform="translate(325, 306.6)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-4" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">7cm</text>
+        </g>
+        <!-- 9cm 라벨 -->
+        <g transform="translate(375, 354.2)">
+          <rect class="t-label-box" x="8" y="-50" width="46" height="20" rx="3" fill="white" stroke="#CFD8DC" stroke-width="1.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"/>
+          <text id="thermo-text-5" x="31" y="-36" text-anchor="middle" font-size="11" font-weight="800" fill="#E53935">20.0°C</text>
+          <text class="t-depth" x="31" y="-23" text-anchor="middle" font-size="9" font-weight="700" fill="#78909C">9cm</text>
+        </g>
+
+        <!-- 스탠드 앞쪽 클램프 (온도계 선 고정용) -->
+        <g fill="#455A64">
+          <rect x="100" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+          <rect x="150" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+          <rect x="200" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+          <rect x="260" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+          <rect x="320" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+          <rect x="370" y="65" width="10" height="20" rx="2" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+        </g>
+      </svg>
+
+      <!-- ── 조작 패널 ── -->
+      <div id="controls-panel">
+        <div class="control-row">
+          <span class="ctrl-label">💡 전등 출력</span>
+          <div class="btn-group">
+            <button class="ctrl-btn lamp-btn active" data-lamp="0">전원 꺼짐</button>
+            <button class="ctrl-btn lamp-btn" data-lamp="60">60W (약가열)</button>
+            <button class="ctrl-btn lamp-btn" data-lamp="100">100W (강가열)</button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <span class="ctrl-label">🌀 선풍기</span>
+          <div class="btn-group">
+            <button class="ctrl-btn fan-btn active" data-fan="0">작동 정지</button>
+            <button class="ctrl-btn fan-btn" data-fan="1">1단 (약풍)</button>
+            <button class="ctrl-btn fan-btn" data-fan="2">2단 (강풍)</button>
+          </div>
+        </div>
+
+        <div class="control-row" id="ctrl-time">
+          <button id="btn-play-pause">▶ 재생</button>
+          <div class="btn-group" style="background:#ECEFF1;">
+            <button class="ctrl-btn speed-btn active" data-speed="1">1배속</button>
+            <button class="ctrl-btn speed-btn" data-speed="2">2배속</button>
+            <button class="ctrl-btn speed-btn" data-speed="4">4배속</button>
+          </div>
+          <button id="btn-reset">↺ 장치 초기화</button>
+          <div id="time-display">00:00 / 18:00</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─────────────────── 우측: 데이터 센터 ─────────────────── -->
+  <section id="data-center">
+    <div id="graph-panel">
+      <div id="graph-header">
+        <h2>📈 연직 수온 분포 그래프</h2>
+        <button class="export-btn" id="btn-export-png">🖼 PNG 스냅샷 저장</button>
+      </div>
+      <div id="chart-wrapper"><canvas id="temp-chart"></canvas></div>
+      <div id="graph-legend">
+        <span class="legend-item ghost">실험 1 데이터 (잔상)</span>
+        <span class="legend-item current">현재 실험 실시간</span>
+      </div>
+    </div>
+
+    <div id="table-panel">
+      <div id="table-header">
+        <div class="tab-group">
+          <button class="tab-btn active" data-tab="1">실험 1 (데이터 표)</button>
+          <button class="tab-btn" data-tab="2">실험 2 (데이터 표)</button>
+        </div>
+        <button class="export-btn" id="btn-export-csv">📥 CSV 파일 다운로드</button>
+      </div>
+      <div id="table-scroll">
+        <!-- 실험 1 표 -->
+        <table id="data-table-1" class="data-table">
+          <thead>
+            <tr id="thead-tr-1">
+              <th>수심 / 시간</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-1">
+            <tr id="row-1-0"><td class="depth-cell">0cm</td></tr>
+            <tr id="row-1-1"><td class="depth-cell">1cm</td></tr>
+            <tr id="row-1-2"><td class="depth-cell">3cm</td></tr>
+            <tr id="row-1-3"><td class="depth-cell">5cm</td></tr>
+            <tr id="row-1-4"><td class="depth-cell">7cm</td></tr>
+            <tr id="row-1-5"><td class="depth-cell">9cm</td></tr>
+          </tbody>
+        </table>
+        <!-- 실험 2 표 -->
+        <table id="data-table-2" class="data-table" hidden>
+          <thead>
+            <tr id="thead-tr-2">
+              <th>수심 / 시간</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-2">
+            <tr id="row-2-0"><td class="depth-cell">0cm</td></tr>
+            <tr id="row-2-1"><td class="depth-cell">1cm</td></tr>
+            <tr id="row-2-2"><td class="depth-cell">3cm</td></tr>
+            <tr id="row-2-3"><td class="depth-cell">5cm</td></tr>
+            <tr id="row-2-4"><td class="depth-cell">7cm</td></tr>
+            <tr id="row-2-5"><td class="depth-cell">9cm</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== 하단: 탐구 질문 ===== -->
+<section id="qa-section">
+  <h2>💡 탐구 활동지</h2>
+  <div id="qa-grid">
+    <div class="qa-item">
+      <p class="q-text"><span class="q-tag">탐구 1. 가열</span> 전등만 켜고 가열할 때, 수온은 깊이에 따라 어떻게 변하나요? 그 이유는 무엇일까요?</p>
+      <textarea id="answer-1" placeholder="학생 답변 입력..."></textarea>
+    </div>
+    <div class="qa-item">
+      <p class="q-text"><span class="q-tag">탐구 2. 바람</span> 전등을 켠 상태에서 미니 선풍기를 작동시키면 표층(0~3cm) 부근의 수온 분포는 어떻게 달라지나요?</p>
+      <textarea id="answer-2" placeholder="학생 답변 입력..."></textarea>
+    </div>
+    <div class="qa-item">
+      <p class="q-text"><span class="q-tag">비교분석</span> 60W 전등과 100W 전등을 사용했을 때, 수온 약층이 시작되는 깊이와 경사에 어떤 차이가 있나요?</p>
+      <textarea id="answer-3" placeholder="학생 답변 입력..."></textarea>
+    </div>
+    <div class="qa-item">
+      <p class="q-text"><span class="q-tag">적용</span> 이 실험 결과를 실제 바다에 적용할 때, 위도(저/중/고)별 혼합층 두께와 어떤 관련성이 있을까요?</p>
+      <textarea id="answer-4" placeholder="학생 답변 입력..."></textarea>
+    </div>
+  </div>
+  <button id="btn-copy-answers">📋 답변 클립보드에 복사하기 (보고서 작성용)</button>
+</section>
+
+<!-- ============================================== -->
+<!-- ================== SCRIPT ==================== -->
+<!-- ============================================== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/** 
+ * 1. simulation.js 
+ */
+(function(global){
+  const DEPTHS_CM = [0, 1, 3, 5, 7, 9];
+  const T0 = 20;
+  const SNAP_MINUTES = [0, 3, 6, 9, 12, 15, 18];
+
+  const ASYMPTOTE = {
+    100: [35.5, 34.0, 24.5, 22.0, 20.3, 20.05],
+    60:  [30.5, 29.0, 23.0, 20.9, 20.1, 20.0],
+  };
+
+  const TARGET_12 = {
+    100: [32, 30, 22, 20.5, 20, 20],
+    60:  [27, 25, 21, 20,   20, 20],
+  };
+
+  const DECAY_K = {};
+  [60, 100].forEach(watts => {
+    DECAY_K[watts] = DEPTHS_CM.map((_, i) => {
+      let Tasymp = ASYMPTOTE[watts][i];
+      let T12    = TARGET_12[watts][i];
+      if(Tasymp <= T0 || T12 <= T0) return 0;
+      let ratio = (T12 - T0)/(Tasymp - T0);
+      if(ratio >= 1) return 0;
+      return -Math.log(1 - ratio) / 12;
+    });
+  });
+
+  function getLampTemps(t, watts) {
+    if(watts === 0 || t <= 0) return [T0, T0, T0, T0, T0, T0];
+    return DEPTHS_CM.map((_, i) => {
+      let Tasymp = ASYMPTOTE[watts][i];
+      let k = DECAY_K[watts][i];
+      if(k === 0) return T0;
+      return T0 + (Tasymp - T0)*(1 - Math.exp(-k * t));
+    });
+  }
+
+  function applyFanMixing(temps, fanLevel) {
+    let t = temps.slice();
+    if(fanLevel === 1) {
+      let new0 = t[0]*0.80 + t[1]*0.15 + t[2]*0.05;
+      let new1 = t[1]*0.80 + t[0]*0.15 + t[2]*0.05;
+      let new2 = t[2]*0.90 + t[0]*0.05 + t[1]*0.05;
+      t[0] = new0; t[1] = new1; t[2] = new2;
+    } else if(fanLevel === 2) {
+      let avg = (t[0] + t[1] + t[2]) / 3;
+      t[0] = avg; t[1] = avg; t[2] = avg;
+    }
+    return t;
+  }
+
+  global.Simulation = {
+    DEPTHS: DEPTHS_CM,
+    SNAP_MINUTES: SNAP_MINUTES,
+    T0: T0,
+    getTemps: (simMin, watts, fan) => applyFanMixing(getLampTemps(simMin, watts), fan),
+    getPassedSnaps: (prev, cur) => SNAP_MINUTES.filter(s => s > prev && s <= cur)
+  };
+})(window);
+
+/** 
+ * 2. animation.js 
+ */
+(function(global){
+  let refs = {};
+  function init() {
+    refs.lampGlow = document.getElementById('svg-lamp-glow');
+    refs.surfaceHeat = document.getElementById('svg-surface-heat');
+    refs.fanBlades = document.getElementById('svg-fan-blades');
+    refs.ripple = document.getElementById('svg-ripple');
+    refs.thermoTexts = [0,1,2,3,4,5].map(i => document.getElementById('thermo-text-'+i));
+    refs.thermoBulbs = [0,1,2,3,4,5].map(i => document.getElementById('thermo-bulb-'+i));
+    refs.thermoFills = [0,1,2,3,4,5].map(i => document.getElementById('thermo-fill-'+i));
+  }
+
+  function tempToColor(temp) {
+    let pct = Math.max(0, Math.min(1, (temp - 20) / 14));
+    let hue = Math.round(240 - pct*240); // 240(Blue) -> 0(Red)
+    return `hsl(${hue},85%,45%)`;
+  }
+
+  function tempToFillHeight(temp) {
+    let pct = Math.max(0, Math.min(1, (temp - 18) / 18));
+    return Math.round(4 + pct*36); // max 40px
+  }
+
+  function updateLamp(watts) {
+    if(!refs.lampGlow) return;
+    refs.lampGlow.classList.remove('lamp-glow-active');
+    if(watts === 0) {
+      refs.lampGlow.setAttribute('opacity','0');
+      refs.surfaceHeat.setAttribute('opacity','0');
+    } else if(watts === 60) {
+      refs.lampGlow.style.setProperty('--glow-opacity', '0.6');
+      refs.lampGlow.setAttribute('opacity', '0.6');
+      refs.lampGlow.classList.add('lamp-glow-active');
+      refs.surfaceHeat.setAttribute('opacity', '0.4');
+    } else {
+      refs.lampGlow.style.setProperty('--glow-opacity', '0.9');
+      refs.lampGlow.setAttribute('opacity', '0.9');
+      refs.lampGlow.classList.add('lamp-glow-active');
+      refs.surfaceHeat.setAttribute('opacity', '0.7');
+    }
+  }
+
+  function updateFan(fanLevel) {
+    if(!refs.fanBlades) return;
+    refs.fanBlades.classList.remove('fan-slow', 'fan-fast');
+    refs.ripple.classList.remove('wave-active', 'wave-fast');
+    if(fanLevel === 0) {
+      refs.ripple.setAttribute('opacity','0');
+    } else if(fanLevel === 1) {
+      refs.fanBlades.classList.add('fan-slow');
+      refs.ripple.setAttribute('opacity','0.6');
+      refs.ripple.classList.add('wave-active');
+    } else {
+      refs.fanBlades.classList.add('fan-fast');
+      refs.ripple.setAttribute('opacity','0.9');
+      refs.ripple.classList.add('wave-fast');
+    }
+  }
+
+  function updateThermometers(temps) {
+    temps.forEach((temp, i) => {
+      if(!refs.thermoTexts[i]) return;
+      let color = tempToColor(temp);
+      let fillH = tempToFillHeight(temp);
+      refs.thermoTexts[i].textContent = temp.toFixed(1) + '°C';
+      refs.thermoTexts[i].setAttribute('fill', color);
+      refs.thermoBulbs[i].setAttribute('fill', color);
+      refs.thermoBulbs[i].setAttribute('stroke', color);
+      
+      let fillEl = refs.thermoFills[i];
+      fillEl.setAttribute('height', fillH);
+      fillEl.setAttribute('y', 0 - fillH); // Since base is at y=0 inside the group
+      fillEl.setAttribute('fill', color);
+    });
+  }
+
+  global.Animation = { init, updateLamp, updateFan, updateThermometers };
+})(window);
+
+/**
+ * 3. graph.js
+ */
+(function(global){
+  let chart = null;
+  function tempsToPoints(temps) {
+    return temps.map((t, i) => ({ x: parseFloat(t.toFixed(2)), y: Simulation.DEPTHS[i] }));
+  }
+
+  function init() {
+    let ctx = document.getElementById('temp-chart').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          { id: 'ghost', label: '실험 1 (잔상)', data: [], borderColor: 'rgba(41, 128, 185, 0.4)', borderWidth: 2, borderDash: [6,4], tension: 0.3, pointRadius: 0 },
+          { id: 'current', label: '현재 실험', data: [], borderColor: '#E67E22', borderWidth: 3.5, pointRadius: 6, pointBackgroundColor: '#E67E22', pointBorderColor: '#FFF', pointBorderWidth: 2, tension: 0.3 }
+        ]
+      },
+      options: {
+        animation: false, responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top:10, right:15, bottom:5, left:5 } },
+        scales: {
+          x: {
+            type: 'linear', min: 18, max: 35,
+            title: { display: true, text: '수온 (°C)', color: '#455A64', font: {size: 12, weight: 'bold'} },
+            ticks: { stepSize: 2, color: '#607D8B' },
+            grid: { color: 'rgba(0,0,0,0.05)' }
+          },
+          y: {
+            type: 'linear', min: 0, max: 10, reverse: true,
+            title: { display: true, text: '수심 (cm)', color: '#455A64', font: {size: 12, weight: 'bold'} },
+            ticks: { stepSize: 2, color: '#607D8B', callback: v => v },
+            grid: { color: 'rgba(0,0,0,0.05)' }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(44, 62, 80, 0.9)',
+            titleColor: '#FFF', bodyColor: '#FFF', padding: 10, cornerRadius: 8,
+            callbacks: { label: ctx => `수온 ${ctx.parsed.x.toFixed(1)}°C (수심 ${ctx.parsed.y}cm)` }
+          }
+        }
+      }
+    });
+  }
+
+  let lastUpdateTs = 0;
+  function updateCurrentLine(temps, force) {
+    if(!chart) return;
+    let now = Date.now();
+    if(!force && now - lastUpdateTs < 150) return;
+    lastUpdateTs = now;
+    chart.data.datasets[1].data = tempsToPoints(temps);
+    chart.update('none');
+  }
+
+  global.Graph = {
+    init, updateCurrentLine,
+    freezeToGhost: () => { chart.data.datasets[0].data = chart.data.datasets[1].data.slice(); chart.data.datasets[1].data = []; chart.update('none'); },
+    clearCurrent: () => { chart.data.datasets[1].data = []; chart.update('none'); },
+    clearAll: () => { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update('none'); },
+    exportPNG: (run) => {
+      let a = document.createElement('a');
+      a.href = chart.canvas.toDataURL('image/png');
+      a.download = `연직수온분포_실험${run}.png`;
+      a.click();
+    }
+  };
+})(window);
+
+/**
+ * 4. table.js (Transpose 행/열 전환 버전)
+ */
+(function(global){
+  let tableData = { 1: {meta:'', rows:[]}, 2: {meta:'', rows:[]} };
+  let activeTab = 1;
+
+  function init() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(parseInt(btn.dataset.tab)));
+    });
+    // 초기 테이블 구조 세팅
+    [1, 2].forEach(expRun => clearRun(expRun));
+  }
+
+  function checkAndRecord(expRun, prevMin, curMin, lamp, fan) {
+    Simulation.getPassedSnaps(prevMin, curMin).forEach(snapMin => {
+      recordCol(expRun, snapMin, Simulation.getTemps(snapMin, lamp, fan));
+    });
+  }
+
+  function recordCol(expRun, minute, temps) {
+    if(tableData[expRun].rows.find(r => r.minute === minute)) return;
+    tableData[expRun].rows.push({ minute, temps: temps.slice() });
+
+    let theadTr = document.getElementById('thead-tr-' + expRun);
+    let th = document.createElement('th');
+    th.textContent = minute + '분';
+    th.className = 'col-new';
+    theadTr.appendChild(th);
+
+    temps.forEach((t, i) => {
+      let tr = document.getElementById(`row-${expRun}-${i}`);
+      let td = document.createElement('td');
+      td.textContent = t.toFixed(1);
+      td.className = 'col-new';
+      tr.appendChild(td);
+    });
+  }
+
+  function clearRun(expRun) {
+    tableData[expRun] = { meta: '', rows: [] };
+    let theadTr = document.getElementById('thead-tr-' + expRun);
+    if(theadTr) theadTr.innerHTML = '<th>수심 \ 시간</th>';
+    
+    const depths = ['0cm', '1cm', '3cm', '5cm', '7cm', '9cm'];
+    for(let i=0; i<6; i++) {
+      let tr = document.getElementById(`row-${expRun}-${i}`);
+      if(tr) tr.innerHTML = `<td class="depth-cell">${depths[i]}</td>`;
+    }
+  }
+
+  function switchTab(t) {
+    activeTab = t;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.tab) === t));
+    document.getElementById('data-table-1').hidden = (t !== 1);
+    document.getElementById('data-table-2').hidden = (t !== 2);
+  }
+
+  function downloadCSV() {
+    let data = tableData[activeTab];
+    let BOM = '﻿';
+    let lines = [`해수 연직 수온 분포 실험 ${activeTab} - 조건: ${data.meta || '미설정'}`];
+    
+    // Header
+    let header = ['수심 \ 시간(분)'].concat(data.rows.map(r => r.minute));
+    lines.push(header.join(','));
+
+    // Rows
+    const depths = ['0cm', '1cm', '3cm', '5cm', '7cm', '9cm'];
+    depths.forEach((depth, i) => {
+      let rowVals = [depth].concat(data.rows.map(r => r.temps[i].toFixed(1)));
+      lines.push(rowVals.join(','));
+    });
+
+    let blob = new Blob([BOM + lines.join('\n')], {type: 'text/csv;charset=utf-8;'});
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a'); a.href = url; a.download = `연직수온_실험${activeTab}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  global.Table = { init, checkAndRecord, clearRun, switchTab, getActiveTab: ()=>activeTab, downloadCSV, 
+    setMeta: (run, lamp, fan) => tableData[run].meta = `전등: ${lamp===0?'꺼짐':lamp+'W'} / 선풍기: ${['없음','1단','2단'][fan]}`
+  };
+})(window);
+
+/**
+ * 5. dragdrop.js
+ */
+(function(global){
+  let TOTAL_SLOTS = 9; // 수조1+등1+팬1+온도계6
+  let filledCount = 0;
+  let drag = { active: false, item: null, clone: null, ox:0, oy:0 };
+
+  function init(cb) {
+    global.onAllPlaced = cb;
+    document.querySelectorAll('.drag-item').forEach(el => el.addEventListener('pointerdown', onDown));
+  }
+
+  function onDown(e) {
+    if(e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    let item = e.currentTarget;
+
+    // 이미 배치된 거면 되돌리기
+    let pZone = item.closest('.drop-zone.dz-filled');
+    if(pZone) {
+      pZone.classList.remove('dz-filled');
+      item.remove();
+      filledCount--;
+      document.getElementById('btn-start-experiment').disabled = true;
+      document.getElementById('storage-box').appendChild(item);
+    }
+
+    let rect = item.getBoundingClientRect();
+    drag.active = true; drag.item = item;
+    drag.ox = e.clientX - rect.left; drag.oy = e.clientY - rect.top;
+    item.setPointerCapture(e.pointerId);
+    item.classList.add('dragging-source');
+
+    let clone = item.cloneNode(true);
+    clone.classList.add('drag-clone');
+    clone.style.width = rect.width + 'px';
+    clone.style.left = (e.clientX - drag.ox) + 'px';
+    clone.style.top = (e.clientY - drag.oy) + 'px';
+    document.body.appendChild(clone);
+    drag.clone = clone;
+
+    document.querySelectorAll(`.drop-zone[data-accepts="${item.dataset.type}"]:not(.dz-filled)`).forEach(z => z.classList.add('dz-highlight'));
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  }
+
+  function onMove(e) {
+    if(!drag.active) return;
+    e.preventDefault();
+    drag.clone.style.left = (e.clientX - drag.ox) + 'px';
+    drag.clone.style.top = (e.clientY - drag.oy) + 'px';
+
+    let cx = e.clientX - drag.ox + drag.clone.offsetWidth/2;
+    let cy = e.clientY - drag.oy + drag.clone.offsetHeight/2;
+    document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('dz-active'));
+    
+    let nearest = findNearest(cx, cy, drag.item.dataset.type);
+    if(nearest) nearest.classList.add('dz-active');
+  }
+
+  function onUp(e) {
+    if(!drag.active) return;
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+    document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('dz-highlight', 'dz-active'));
+
+    let cx = e.clientX - drag.ox + drag.clone.offsetWidth/2;
+    let cy = e.clientY - drag.oy + drag.clone.offsetHeight/2;
+    let nearest = findNearest(cx, cy, drag.item.dataset.type);
+
+    if(drag.clone) { drag.clone.remove(); drag.clone = null; }
+    
+    if(nearest) {
+      drag.item.classList.remove('dragging-source');
+      nearest.appendChild(drag.item);
+      nearest.classList.add('dz-filled');
+      filledCount++;
+      if(filledCount >= TOTAL_SLOTS) {
+        document.getElementById('btn-start-experiment').disabled = false;
+        if(global.onAllPlaced) global.onAllPlaced();
+      }
+    } else {
+      drag.item.classList.remove('dragging-source');
+    }
+    drag.active = false; drag.item = null;
+  }
+
+  function findNearest(cx, cy, type) {
+    let best = null; let bestD = 150;
+    document.querySelectorAll(`.drop-zone[data-accepts="${type}"]:not(.dz-filled)`).forEach(dz => {
+      let rect = dz.getBoundingClientRect();
+      let d = Math.hypot(cx - (rect.left+rect.width/2), cy - (rect.top+rect.height/2));
+      if(d < bestD) { bestD = d; best = dz; }
+    });
+    return best;
+  }
+
+  global.DragDrop = { init };
+})(window);
+
+/**
+ * 6. main.js
+ */
+(function(){
+  let App = { stage:'SETUP', run:1, simMin:0, pSimMin:0, lamp:0, fan:0, speed:1, rafId:null, lastTs:null, exp1Done:false };
+  let lastGraphTs = 0;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    DragDrop.init(); Animation.init(); Graph.init(); Table.init();
+    
+    document.getElementById('btn-start-experiment').addEventListener('click', enterExp);
+    document.querySelectorAll('.lamp-btn').forEach(b => b.addEventListener('click', e => {
+      document.querySelectorAll('.lamp-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+      App.lamp = parseInt(b.dataset.lamp); Animation.updateLamp(App.lamp);
+    }));
+    document.querySelectorAll('.fan-btn').forEach(b => b.addEventListener('click', e => {
+      document.querySelectorAll('.fan-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+      App.fan = parseInt(b.dataset.fan); Animation.updateFan(App.fan);
+    }));
+    document.querySelectorAll('.speed-btn').forEach(b => b.addEventListener('click', e => {
+      document.querySelectorAll('.speed-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+      App.speed = parseInt(b.dataset.speed);
+    }));
+
+    document.getElementById('btn-play-pause').addEventListener('click', togglePlay);
+    document.getElementById('btn-reset').addEventListener('click', resetExp);
+    document.getElementById('btn-export-png').addEventListener('click', ()=>Graph.exportPNG(App.run));
+    document.getElementById('btn-export-csv').addEventListener('click', ()=>Table.downloadCSV());
+    document.getElementById('btn-copy-answers').addEventListener('click', copyAnswers);
+
+    Animation.updateThermometers([20,20,20,20,20,20]);
+    updateTimeDisplay(0);
+  });
+
+  function enterExp() {
+    document.body.dataset.stage = 'experiment';
+    document.getElementById('stage-experiment').classList.add('stage-enter');
+    App.stage = 'PAUSED'; App.run = 1; App.simMin = 0; App.pSimMin = 0;
+    setIndicator('1차 실험 준비 완료');
+    updatePlayBtn(); Animation.updateLamp(0); Animation.updateFan(0);
+    Animation.updateThermometers([20,20,20,20,20,20]);
+    Graph.clearAll(); Table.clearRun(1); Table.clearRun(2); Table.switchTab(1);
+  }
+
+  function togglePlay() {
+    if(App.stage === 'RUNNING') {
+      App.stage = 'PAUSED'; App.lastTs = null; cancelAnimationFrame(App.rafId); updatePlayBtn();
+    } else if(App.stage === 'PAUSED') {
+      App.stage = 'RUNNING'; setIndicator(App.run + '차 실험 진행 중');
+      if(App.simMin === 0) {
+        Table.setMeta(App.run, App.lamp, App.fan);
+        Table.checkAndRecord(App.run, -0.1, 0, App.lamp, App.fan);
+      }
+      App.rafId = requestAnimationFrame(loop);
+      updatePlayBtn();
+    }
+  }
+
+  function loop(ts) {
+    if(App.stage !== 'RUNNING') return;
+    if(!App.lastTs) App.lastTs = ts;
+    let dMin = ((ts - App.lastTs)/1000) * App.speed;
+    App.lastTs = ts;
+
+    App.pSimMin = App.simMin;
+    App.simMin = Math.min(18, App.simMin + dMin);
+
+    let temps = Simulation.getTemps(App.simMin, App.lamp, App.fan);
+    Animation.updateThermometers(temps);
+
+    let now = Date.now();
+    if(now - lastGraphTs > 150) { Graph.updateCurrentLine(temps); lastGraphTs = now; }
+
+    Table.checkAndRecord(App.run, App.pSimMin, App.simMin, App.lamp, App.fan);
+    updateTimeDisplay(App.simMin);
+
+    if(App.simMin >= 18) { completeExp(); return; }
+    App.rafId = requestAnimationFrame(loop);
+  }
+
+  function completeExp() {
+    cancelAnimationFrame(App.rafId);
+    App.stage = 'COMPLETE'; App.simMin = 18; updateTimeDisplay(18);
+    let temps = Simulation.getTemps(18, App.lamp, App.fan);
+    Animation.updateThermometers(temps); Graph.updateCurrentLine(temps, true);
+    Table.checkAndRecord(App.run, 17.9, 18, App.lamp, App.fan);
+    updatePlayBtn();
+
+    if(App.run === 1) {
+      App.exp1Done = true;
+      showBanner('✓ 1차 실험 완료! 하단의 [↺ 장치 초기화] 버튼을 눌러 2차 실험을 준비하세요.');
+      setIndicator('1차 실험 완료');
+    } else {
+      showBanner('✓ 2차 실험 완료! 우측에서 두 그래프의 차이를 비교해보세요.');
+      setIndicator('2차 실험 완료');
+    }
+  }
+
+  function resetExp() {
+    cancelAnimationFrame(App.rafId); App.lastTs = null; hideBanner();
+    if(App.exp1Done && App.run === 1) {
+      App.run = 2; Graph.freezeToGhost(); Table.clearRun(2); Table.switchTab(2);
+      setIndicator('2차 실험 설정');
+    }
+    App.simMin = 0; App.pSimMin = 0; App.stage = 'PAUSED'; lastGraphTs = 0;
+    Graph.clearCurrent(); Table.clearRun(App.run);
+    Animation.updateThermometers([20,20,20,20,20,20]);
+    updateTimeDisplay(0); updatePlayBtn();
+  }
+
+  function updateTimeDisplay(m) {
+    let mm = Math.floor(m); let ss = Math.floor((m-mm)*60);
+    document.getElementById('time-display').textContent = (mm<10?'0':'')+mm+':'+(ss<10?'0':'')+ss+' / 18:00';
+  }
+  function updatePlayBtn() {
+    let b = document.getElementById('btn-play-pause');
+    b.textContent = App.stage==='RUNNING' ? '⏸ 일시정지' : '▶ 재생';
+    b.disabled = App.stage==='COMPLETE';
+  }
+  function setIndicator(t) { document.getElementById('stage-indicator').textContent = t; }
+
+  let tId = null;
+  function showBanner(m) {
+    let e = document.getElementById('complete-banner'); e.textContent = m; e.classList.remove('fade-out'); e.style.display = 'block';
+    clearTimeout(tId); tId = setTimeout(()=>{ e.classList.add('fade-out'); setTimeout(()=>e.style.display='none',500); }, 5000);
+  }
+  function hideBanner() { document.getElementById('complete-banner').style.display='none'; }
+
+  function copyAnswers() {
+    let q = ['1. [탐구 1. 가열]', '2. [탐구 2. 바람]', '3. [비교분석]', '4. [적용]'];
+    let text = q.map((txt, i) => `${txt}
+→ ${(document.getElementById('answer-'+(i+1)).value||'').trim()||'(미입력)'}`).join('\n\n'+'-'.repeat(40)+'\n\n');
+    let b = document.getElementById('btn-copy-answers'); let o = b.textContent;
+    navigator.clipboard.writeText(text).then(()=>{
+      b.textContent = '✓ 복사 성공!'; setTimeout(()=>b.textContent=o, 2000);
+    });
+  }
+})();
+</script>
+</body>
+</html>
